@@ -10,10 +10,10 @@ COPY ["/src/WorkToolChatGPTAPI/WorkToolChatGPTAPI.csproj", "WorkToolChatGPTAPI/"
 RUN dotnet restore "WorkToolChatGPTAPI/WorkToolChatGPTAPI.csproj"
 COPY ./src/WorkToolChatGPTAPI .
 WORKDIR "/src/WorkToolChatGPTAPI"
-RUN dotnet build "WorkToolChatGPTAPI.csproj" -c Release -o /app/build -r linux-x64
+RUN dotnet build "WorkToolChatGPTAPI.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "WorkToolChatGPTAPI.csproj" -c Release -o /app/publish -r linux-x64
+RUN dotnet publish "WorkToolChatGPTAPI.csproj" -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app
