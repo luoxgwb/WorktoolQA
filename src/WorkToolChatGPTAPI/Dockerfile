@@ -13,7 +13,7 @@ WORKDIR "/src/WorkToolChatGPTAPI"
 RUN dotnet build "WorkToolChatGPTAPI.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "WorkToolChatGPTAPI.csproj" -c Release -o /app/publish
+RUN dotnet publish "WorkToolChatGPTAPI.csproj" -c Release -o /app/publish -r linux-x64
 
 FROM base AS final
 WORKDIR /app
