@@ -19,7 +19,7 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-COPY --from=build /app/build/entrypoint.sh ./entrypoint.sh
+COPY --from=build ./src/WorkToolChatGPTAPI/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
 ENTRYPOINT ["/bin/sh", "./entrypoint.sh"]
