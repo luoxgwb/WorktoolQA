@@ -1,3 +1,3 @@
-FROM luoxgwb/worktoolchatgptapi:0.0.1
+FROM luoxgwb/worktoolchatgptapi:latest
 
 ENTRYPOINT ["dotnet", "WorkToolChatGPTAPI.dll"]
