@@ -18,4 +18,4 @@ RUN dotnet publish "WorkToolChatGPTAPI.csproj" -c Release -o /app/publish -r lin
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "WorkToolChatGPTAPI.dll"]
+ENTRYPOINT ["/bin/sh", "entrypoint.sh"]
