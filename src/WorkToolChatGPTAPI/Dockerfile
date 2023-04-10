@@ -8,7 +8,7 @@ FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src
 COPY ["WorkToolChatGPTAPI/WorkToolChatGPTAPI.csproj", "WorkToolChatGPTAPI/"]
 RUN dotnet restore "WorkToolChatGPTAPI/WorkToolChatGPTAPI.csproj"
-COPY . .
+COPY ./src/WorkToolChatGPTAPI .
 WORKDIR "/src/WorkToolChatGPTAPI"
 RUN dotnet build "WorkToolChatGPTAPI.csproj" -c Release -o /app/build
 
