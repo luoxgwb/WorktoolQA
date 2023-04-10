@@ -19,6 +19,4 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-RUN chmod +x ./entrypoint.sh
-
-ENTRYPOINT ["/bin/sh", "./entrypoint.sh"]
+ENTRYPOINT ["dotnet", "WorkToolChatGPTAPI.dll"]
