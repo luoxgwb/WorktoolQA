@@ -14,5 +14,6 @@ namespace Entities
         }
 
         public DbSet<WorkToolCount> WorkToolCount { get; set; }
+        public DbSet<WorkToolLog> WorkToolLog { get; set; }
     }
 }

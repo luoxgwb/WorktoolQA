@@ -10,6 +10,8 @@ using Utility.Dependencies;
 using Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Text.Encodings.Web;
+using Utility.Enums;
 
 namespace Services.ReplyServices
 {
@@ -30,6 +32,41 @@ namespace Services.ReplyServices
 
         public async Task<ResultDto> SendMessageAsync(RequestDto requestDto)
         {
+            var OperationID = Guid.NewGuid();
+
+            var option = new JsonSerializerOptions()
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            var workToolLogJson = new WorkToolLog
+            {
+                OperationID = OperationID,
+                Type = LogType.System,
+                ReceivedName = requestDto.ReceivedName,
+                GroupName = requestDto.GroupName,
+                GroupRemark = requestDto.GroupRemark,
+                Message = JsonSerializer.Serialize(requestDto, option)
+            };
+
+            _context.WorkToolLog.Add(workToolLogJson);
+
+            var workToolLogUser = new WorkToolLog
+            {
+                OperationID = OperationID,
+                Type = LogType.User,
+                ReceivedName = requestDto.ReceivedName,
+                GroupName = requestDto.GroupName,
+                GroupRemark = requestDto.GroupRemark,
+                Message = requestDto.Spoken
+            };
+
+            _context.WorkToolLog.Add(workToolLogUser);
+
+
+            _logger.LogInformation("进入");
+
+
             var stopWatch = new Stopwatch();
             stopWatch.Start();
 
@@ -49,6 +86,20 @@ namespace Services.ReplyServices
             if (count > Convert.ToInt32(maxCount))
             {
                 res.Data.Info.Text = "次数已达上限";
+
+                var workToolLogUpperLimit = new WorkToolLog
+                {
+                    OperationID = OperationID,
+                    Type = LogType.System,
+                    ReceivedName = requestDto.ReceivedName,
+                    GroupName = requestDto.GroupName,
+                    GroupRemark = requestDto.GroupRemark,
+                    Message = res.Data.Info.Text
+                };
+
+                _context.WorkToolLog.Add(workToolLogUpperLimit);
+
+                await _context.SaveChangesAsync();
                 return res;
             }
 
@@ -78,8 +129,32 @@ namespace Services.ReplyServices
                 chat.AppendUserInput(requestDto.Spoken);
                 try
                 {
+                    var workToolLogSend = new WorkToolLog
+                    {
+                        OperationID = OperationID,
+                        Type = LogType.System,
+                        ReceivedName = requestDto.ReceivedName,
+                        GroupName = requestDto.GroupName,
+                        GroupRemark = requestDto.GroupRemark,
+                        Message = "为gpt发送消息"
+                    };
+
+                    _context.WorkToolLog.Add(workToolLogSend);
+
                     res.Data.Info.Text = await chat.GetResponseFromChatbotAsync();
                     count++;
+
+                    var workToolLogReceive = new WorkToolLog
+                    {
+                        OperationID = OperationID,
+                        Type = LogType.Bot,
+                        ReceivedName = requestDto.ReceivedName,
+                        GroupName = requestDto.GroupName,
+                        GroupRemark = requestDto.GroupRemark,
+                        Message = res.Data.Info.Text
+                    };
+
+                    _context.WorkToolLog.Add(workToolLogReceive);
 
                     if (model != null)
                     {
@@ -97,18 +172,46 @@ namespace Services.ReplyServices
                         await _context.AddAsync(workToolCount);
                     }
 
-                    await _context.SaveChangesAsync();
+                    //await _context.SaveChangesAsync();
                 }
                 catch (Exception ex)
                 {
                     res.Code = 500;
                     res.Message = ex.Message;
+                    _logger.LogInformation(ex.Message);
+
+                    var workToolLogError = new WorkToolLog
+                    {
+                        OperationID = OperationID,
+                        Type = LogType.System,
+                        ReceivedName = requestDto.ReceivedName,
+                        GroupName = requestDto.GroupName,
+                        GroupRemark = requestDto.GroupRemark,
+                        Message = ex.Message
+                    };
+
+                    _context.WorkToolLog.Add(workToolLogError);
+                    await _context.SaveChangesAsync();
+                    return res;
                 }
             }
             stopWatch.Stop();
             TimeSpan ts = stopWatch.Elapsed;
             if (ts.TotalSeconds > 2)
             {
+                _logger.LogInformation("启用发送指令");
+                var workToolLogError = new WorkToolLog
+                {
+                    OperationID = OperationID,
+                    Type = LogType.System,
+                    ReceivedName = requestDto.ReceivedName,
+                    GroupName = requestDto.GroupName,
+                    GroupRemark = requestDto.GroupRemark,
+                    Message = "启用发送指令"
+                };
+
+                _context.WorkToolLog.Add(workToolLogError);
+
                 var sendDto = new SendDto();
                 var newList = new List
                 {
@@ -121,8 +224,22 @@ namespace Services.ReplyServices
                 var url = "https://worktool.asrtts.cn/wework/sendRawMessage?robotId=" + Configuration.GetSection("ChatGPT")["RobotId"];
                 var client = new HttpClient();
                 HttpContent content = new StringContent(JsonSerializer.Serialize(sendDto));
-                await client.PostAsync(url, content);
+                var sendRawResult = await client.PostAsync(url, content);
 
+                _logger.LogInformation("发送指令结束");
+
+                var workToolLogSendRawResult = new WorkToolLog
+                {
+                    OperationID = OperationID,
+                    Type = LogType.System,
+                    ReceivedName = requestDto.ReceivedName,
+                    GroupName = requestDto.GroupName,
+                    GroupRemark = requestDto.GroupRemark,
+                    Message = "发送指令结束" + sendRawResult.StatusCode
+                };
+                _context.WorkToolLog.Add(workToolLogSendRawResult);
+
+                await _context.SaveChangesAsync();
             }
             return res;
         }

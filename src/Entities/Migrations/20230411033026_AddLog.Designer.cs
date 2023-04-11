@@ -3,6 +3,7 @@ using System;
 using Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Entities.Migrations
 {
     [DbContext(typeof(SqlDbContext))]
-    partial class SqlDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230411033026_AddLog")]
+    partial class AddLog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -51,14 +54,6 @@ namespace Entities.Migrations
                     b.Property<DateTime>("CreatedTime")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("GroupName")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("GroupRemark")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -66,14 +61,7 @@ namespace Entities.Migrations
                     b.Property<Guid>("OperationID")
                         .HasColumnType("char(36)");
 
-                    b.Property<string>("ReceivedName")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
                     b.Property<short>("State")
-                        .HasColumnType("smallint");
-
-                    b.Property<short>("Type")
                         .HasColumnType("smallint");
 
                     b.HasKey("Id");
