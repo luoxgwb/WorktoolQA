@@ -9,20 +9,25 @@ using Microsoft.Extensions.Caching.Memory;
 using Utility.Dependencies;
 using Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Services.ReplyServices
 {
     public class MessageService : IMessageService, IScoped
     {
-        public MessageService(IConfiguration configuration, IMemoryCache memoryCache, SqlDbContext context)
+        public MessageService(IConfiguration configuration, IMemoryCache memoryCache, SqlDbContext context, ILogger<MessageService> logger)
         {
             Configuration = configuration;
             _memoryCache = memoryCache;
             _context = context;
+            _logger = logger;
         }
+
         public IConfiguration Configuration { get; }
         private readonly IMemoryCache _memoryCache;
         private readonly SqlDbContext _context;
+        private readonly ILogger<MessageService> _logger;
+
         public async Task<ResultDto> SendMessageAsync(RequestDto requestDto)
         {
             var stopWatch = new Stopwatch();
@@ -49,6 +54,7 @@ namespace Services.ReplyServices
 
             var key = Configuration.GetSection("ChatGPT")["Key"];
 
+            _logger.LogInformation("Openai Key: {key}", key);
 
             var conversationKey = requestDto.ReceivedName + requestDto.GroupName + requestDto.GroupRemark;
             var cacheKey = $"conversation_{conversationKey}";
