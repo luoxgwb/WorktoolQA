@@ -47,7 +47,7 @@ namespace Services.ReplyServices
                 return res;
             }
 
-            var key = Configuration["Key"];
+            var key = Configuration.GetSection("ChatGPT")["Key"];
 
 
             var conversationKey = requestDto.ReceivedName + requestDto.GroupName + requestDto.GroupRemark;
@@ -66,7 +66,7 @@ namespace Services.ReplyServices
                 else
                 {
                     chat = api.Chat.CreateConversation();
-                    _memoryCache.Set(cacheKey, chat);
+                    _memoryCache.Set(cacheKey, chat, TimeSpan.FromMinutes(10));
                 }
 
                 chat.AppendUserInput(requestDto.Spoken);
