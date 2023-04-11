@@ -35,11 +35,32 @@ namespace WorkToolChatGPTAPI.Controllers
         [HttpPost]
         public IActionResult Test2(RequestDto requestDto)
         {
+
             string json = "{\"code\":200,\"message\":\"操作成功\",\"data\":{\"type\":5000,\"info\":{\"text\":\"1\"},\"text\":\"2\"}}";
 
-            //var res = JsonConvert.DeserializeObject<ResultDto>(json);
+            var res = JsonConvert.DeserializeObject<Rootobject>(json);
 
-            return Ok(json);
+            return Ok(res);
         }
+
+        public class Rootobject
+        {
+            public int code { get; set; }
+            public string message { get; set; }
+            public Data data { get; set; }
+        }
+
+        public class Data
+        {
+            public int type { get; set; }
+            public Info info { get; set; }
+            public string text { get; set; }
+        }
+
+        public class Info
+        {
+            public string text { get; set; }
+        }
+
     }
 }
