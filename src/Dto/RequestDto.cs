@@ -11,7 +11,6 @@ namespace Dto
             ReceivedName = string.Empty;
             GroupName = string.Empty;
             GroupRemark = string.Empty;
-            RoomType = string.Empty;
             AtMe = true;
         }
         /// <summary>
@@ -43,7 +42,7 @@ namespace Dto
         /// QA所在房间类型 1=外部群 2=外部联系人 3=内部群 4=内部联系人
         /// </summary>
         [JsonPropertyName("roomType")]
-        public string RoomType { get; set; }
+        public long RoomType { get; set; }
         /// <summary>
         /// 是否@机器人（群聊）
         /// </summary>
@@ -53,6 +52,6 @@ namespace Dto
         /// 消息类型 0=未知 1=文本 2=图片 5=视频 7=小程序 8=链接 9=文件
         /// </summary>
         [JsonPropertyName("textType")]
-        public int TextType { get; set; }
+        public long TextType { get; set; }
     }
 }
