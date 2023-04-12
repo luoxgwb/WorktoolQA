@@ -11,7 +11,7 @@ namespace Dto
             ReceivedName = string.Empty;
             GroupName = string.Empty;
             GroupRemark = string.Empty;
-            AtMe = true;
+            AtMe = string.Empty;
         }
         /// <summary>
         /// 问题文本
@@ -47,7 +47,7 @@ namespace Dto
         /// 是否@机器人（群聊）
         /// </summary>
         [JsonPropertyName("atMe")]
-        public bool AtMe { get; set; }
+        public object AtMe { get; set; }
         /// <summary>
         /// 消息类型 0=未知 1=文本 2=图片 5=视频 7=小程序 8=链接 9=文件
         /// </summary>

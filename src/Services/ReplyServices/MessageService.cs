@@ -1,247 +1,163 @@
 ﻿using Dto;
-using Microsoft.Extensions.Configuration;
-using OpenAI_API;
-using OpenAI_API.Chat;
 using Services.IReplyServices;
-using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.Extensions.Caching.Memory;
 using Utility.Dependencies;
 using Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text.Encodings.Web;
 using Utility.Enums;
+using System.Net.Http.Headers;
+using Utility.Helper;
+using Utility.Models;
+using Microsoft.Extensions.Options;
 
 namespace Services.ReplyServices
 {
     public class MessageService : IMessageService, IScoped
     {
-        public MessageService(IConfiguration configuration, IMemoryCache memoryCache, SqlDbContext context, ILogger<MessageService> logger)
-        {
-            Configuration = configuration;
-            _memoryCache = memoryCache;
-            _context = context;
-            _logger = logger;
-        }
-
-        public IConfiguration Configuration { get; }
-        private readonly IMemoryCache _memoryCache;
         private readonly SqlDbContext _context;
         private readonly ILogger<MessageService> _logger;
+        private readonly ChatGPTTool _chatGPTTool;
+        private readonly ChatGPTSettings _chatGPTSettings;
+
+        public MessageService(SqlDbContext context, ILogger<MessageService> logger, ChatGPTTool chatGPTTool, IOptionsSnapshot<ChatGPTSettings> chatGPTSettings)
+        {
+            _context = context;
+            _logger = logger;
+            _chatGPTTool = chatGPTTool;
+            _chatGPTSettings = chatGPTSettings.Value;
+        }
 
         public async Task<ResultDto> SendMessageAsync(RequestDto requestDto)
         {
-            var OperationID = Guid.NewGuid();
+            var operationID = Guid.NewGuid();
 
-            var option = new JsonSerializerOptions()
-            {
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            };
-
-            var workToolLogJson = new WorkToolLog
-            {
-                OperationID = OperationID,
-                Type = LogType.System,
-                ReceivedName = requestDto.ReceivedName,
-                GroupName = requestDto.GroupName,
-                GroupRemark = requestDto.GroupRemark,
-                Message = JsonSerializer.Serialize(requestDto, option)
-            };
-
-            _context.WorkToolLog.Add(workToolLogJson);
-
-            var workToolLogUser = new WorkToolLog
-            {
-                OperationID = OperationID,
-                Type = LogType.User,
-                ReceivedName = requestDto.ReceivedName,
-                GroupName = requestDto.GroupName,
-                GroupRemark = requestDto.GroupRemark,
-                Message = requestDto.Spoken
-            };
-
-            _context.WorkToolLog.Add(workToolLogUser);
-
-
-            _logger.LogInformation("进入");
-
-
-            var stopWatch = new Stopwatch();
-            stopWatch.Start();
+            AddLog(operationID, LogType.User, requestDto, requestDto.Spoken);
 
             var res = new ResultDto();
-            var maxCount = Configuration.GetSection("ChatGPT")["MaxCount"];
-            var countId = Convert.ToInt32(Configuration.GetSection("ChatGPT")["CountId"]);
+            var maxCount = _chatGPTSettings.MaxCount;
+            var countId = _chatGPTSettings.CountId;
 
-            var count = 0;
+            var workToolCountmodel = new WorkToolCount();
 
             var model = await _context.WorkToolCount.Where(x => x.CountId == countId).FirstOrDefaultAsync();
 
             if (model != null)
             {
-                count = model.Count;
+                workToolCountmodel = model;
+            }
+            else
+            {
+                var workToolCount = new WorkToolCount
+                {
+                    CountId = countId,
+                    Count = Convert.ToInt32(maxCount)
+                };
+                await _context.AddAsync(workToolCount);
+
+                workToolCountmodel = workToolCount;
             }
 
-            if (count > Convert.ToInt32(maxCount))
+
+            //敏感词
+            var search = IllegalWordHelper.GetIllegalWordsSearch();
+            var spokenReplace = search.Replace(requestDto.Spoken);
+            if (spokenReplace != requestDto.Spoken)
             {
-                res.Data.Info.Text = "次数已达上限";
+                res.Data.Info.Text = $"\nINFO:\n发言中包含敏感词，请重试:\n{spokenReplace}";
 
-                var workToolLogUpperLimit = new WorkToolLog
-                {
-                    OperationID = OperationID,
-                    Type = LogType.System,
-                    ReceivedName = requestDto.ReceivedName,
-                    GroupName = requestDto.GroupName,
-                    GroupRemark = requestDto.GroupRemark,
-                    Message = res.Data.Info.Text
-                };
-
-                _context.WorkToolLog.Add(workToolLogUpperLimit);
+                AddLog(operationID, LogType.System, requestDto, res.Data.Info.Text);
 
                 await _context.SaveChangesAsync();
-                return res;
+                await SendRawMessage(requestDto, res);
+                return new ResultDto();
             }
 
-            var key = Configuration.GetSection("ChatGPT")["Key"];
-
-            _logger.LogInformation("Openai Key: {key}", key);
-
-            var conversationKey = requestDto.ReceivedName + requestDto.GroupName + requestDto.GroupRemark;
-            var cacheKey = $"conversation_{conversationKey}";
-
-
-            OpenAIAPI api = new OpenAIAPI(new APIAuthentication(key));
+            //次数查询
+            if (requestDto.Spoken == "剩余次数")
             {
+                res.Data.Info.Text = $"\nINFO:\n剩余{workToolCountmodel.Count}次";
 
-                Conversation chat;
-
-                if (_memoryCache.TryGetValue(cacheKey, out Conversation conversation))
-                {
-                    chat = conversation;
-                }
-                else
-                {
-                    chat = api.Chat.CreateConversation();
-                    _memoryCache.Set(cacheKey, chat, TimeSpan.FromMinutes(10));
-                }
-
-                chat.AppendUserInput(requestDto.Spoken);
-                try
-                {
-                    var workToolLogSend = new WorkToolLog
-                    {
-                        OperationID = OperationID,
-                        Type = LogType.System,
-                        ReceivedName = requestDto.ReceivedName,
-                        GroupName = requestDto.GroupName,
-                        GroupRemark = requestDto.GroupRemark,
-                        Message = "为gpt发送消息"
-                    };
-
-                    _context.WorkToolLog.Add(workToolLogSend);
-
-                    res.Data.Info.Text = await chat.GetResponseFromChatbotAsync();
-                    count++;
-
-                    var workToolLogReceive = new WorkToolLog
-                    {
-                        OperationID = OperationID,
-                        Type = LogType.Bot,
-                        ReceivedName = requestDto.ReceivedName,
-                        GroupName = requestDto.GroupName,
-                        GroupRemark = requestDto.GroupRemark,
-                        Message = res.Data.Info.Text
-                    };
-
-                    _context.WorkToolLog.Add(workToolLogReceive);
-
-                    if (model != null)
-                    {
-                        model.Count = count;
-                        _context.Attach(model);
-                        _context.Entry(model).Property(x => x.Count).IsModified = true;
-                    }
-                    else
-                    {
-                        var workToolCount = new WorkToolCount
-                        {
-                            CountId = countId,
-                            Count = count
-                        };
-                        await _context.AddAsync(workToolCount);
-                    }
-
-                    //await _context.SaveChangesAsync();
-                }
-                catch (Exception ex)
-                {
-                    res.Code = 500;
-                    res.Message = ex.Message;
-                    _logger.LogInformation(ex.Message);
-
-                    var workToolLogError = new WorkToolLog
-                    {
-                        OperationID = OperationID,
-                        Type = LogType.System,
-                        ReceivedName = requestDto.ReceivedName,
-                        GroupName = requestDto.GroupName,
-                        GroupRemark = requestDto.GroupRemark,
-                        Message = ex.Message
-                    };
-
-                    _context.WorkToolLog.Add(workToolLogError);
-                    await _context.SaveChangesAsync();
-                    return res;
-                }
-            }
-            stopWatch.Stop();
-            TimeSpan ts = stopWatch.Elapsed;
-            if (ts.TotalSeconds > 2)
-            {
-                _logger.LogInformation("启用发送指令");
-                var workToolLogError = new WorkToolLog
-                {
-                    OperationID = OperationID,
-                    Type = LogType.System,
-                    ReceivedName = requestDto.ReceivedName,
-                    GroupName = requestDto.GroupName,
-                    GroupRemark = requestDto.GroupRemark,
-                    Message = "启用发送指令"
-                };
-
-                _context.WorkToolLog.Add(workToolLogError);
-
-                var sendDto = new SendDto();
-                var newList = new List
-                {
-                    ReceivedContent = res.Data.Info.Text,
-                    TitleList = new[] { requestDto.GroupName },
-                    AtList = new[] { requestDto.ReceivedName }
-                };
-                sendDto.List = sendDto.List.Append(newList).ToArray();
-
-                var url = "https://worktool.asrtts.cn/wework/sendRawMessage?robotId=" + Configuration.GetSection("ChatGPT")["RobotId"];
-                var client = new HttpClient();
-                HttpContent content = new StringContent(JsonSerializer.Serialize(sendDto));
-                var sendRawResult = await client.PostAsync(url, content);
-
-                _logger.LogInformation("发送指令结束");
-
-                var workToolLogSendRawResult = new WorkToolLog
-                {
-                    OperationID = OperationID,
-                    Type = LogType.System,
-                    ReceivedName = requestDto.ReceivedName,
-                    GroupName = requestDto.GroupName,
-                    GroupRemark = requestDto.GroupRemark,
-                    Message = "发送指令结束" + sendRawResult.StatusCode
-                };
-                _context.WorkToolLog.Add(workToolLogSendRawResult);
+                AddLog(operationID, LogType.System, requestDto, res.Data.Info.Text);
 
                 await _context.SaveChangesAsync();
+                await SendRawMessage(requestDto, res);
+                return new ResultDto();
             }
-            return res;
+
+            //已达上限
+            if (workToolCountmodel.Count <= 0)
+            {
+                res.Data.Info.Text = $"\nINFO:\n次数已达上限";
+
+                AddLog(operationID, LogType.System, requestDto, res.Data.Info.Text);
+
+                await _context.SaveChangesAsync();
+                await SendRawMessage(requestDto, res);
+                return new ResultDto();
+            }
+
+
+            var gptMessage = await _chatGPTTool.GetGPTMessageAsync(requestDto);
+
+            if (gptMessage.Code == 0)
+            {
+                workToolCountmodel.Count--;
+
+                res.Data.Info.Text = $"\n{gptMessage.Data.Info.Text}";
+
+                AddLog(operationID, LogType.Bot, requestDto, res.Data.Info.Text);
+
+                await _context.SaveChangesAsync();
+                await SendRawMessage(requestDto, res);
+                return new ResultDto();
+            }
+            else
+            {
+                AddLog(operationID, LogType.System, requestDto, gptMessage.Message);
+
+                await _context.SaveChangesAsync();
+                return new ResultDto();
+            }
+
+        }
+        private void AddLog(Guid operationID, LogType LogType, RequestDto requestDto, string message)
+        {
+            var workToolLog = new WorkToolLog
+            {
+                OperationID = operationID,
+                Type = LogType,
+                ReceivedName = requestDto.ReceivedName,
+                GroupName = requestDto.GroupName,
+                GroupRemark = requestDto.GroupRemark,
+                Message = message
+            };
+            _context.WorkToolLog.Add(workToolLog);
+        }
+
+        private async Task<string> SendRawMessage(RequestDto requestDto, ResultDto res)
+        {
+            var sendDto = new SendDto();
+            var newList = new List
+            {
+                ReceivedContent = res.Data.Info.Text,
+                TitleList = new List<string> { requestDto.GroupName },
+                AtList = new List<string> { requestDto.ReceivedName }
+            };
+            sendDto.List.Add(newList);
+
+            var url = "https://worktool.asrtts.cn/wework/sendRawMessage?robotId=" + _chatGPTSettings.RobotId;
+            var client = new HttpClient();
+
+            var jsonRequest = JsonSerializer.Serialize(sendDto, new JsonSerializerOptions() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+            HttpContent content = new StringContent(jsonRequest);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+            var sendRawResult = await client.PostAsync(url, content);
+
+            sendRawResult.EnsureSuccessStatusCode();
+            return await sendRawResult.Content.ReadAsStringAsync();
         }
     }
 }

@@ -3,6 +3,7 @@ using ReprintTech.Universe.ChatApi.Extensions;
 using Services;
 using Services.IReplyServices;
 using Services.ReplyServices;
+using Utility.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,8 +23,11 @@ builder.Configuration
     .AddIniFile($"ChatIniConfig.{builder.Environment.EnvironmentName}.ini",
                 optional: true, reloadOnChange: true);
 
-
+builder.Services.AddTransient<Utility.Helper.ChatGPTTool>();
 builder.Services.AddScoped<IMessageService, MessageService>();
+
+builder.Services.Configure<ChatGPTSettings>(builder.Configuration.GetSection("ChatGPT"));
+
 //»º´æ
 builder.Services.AddMemoryCache();
 
