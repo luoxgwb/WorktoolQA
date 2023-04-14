@@ -11,71 +11,44 @@ namespace Utility.Helper
 {
     public class ChatGPTTool
     {
-        private readonly IMemoryCache _memoryCache;
-        private readonly ChatGPTSettings _chatGPTSettings;
-        public ChatGPTTool(IMemoryCache memoryCache, IOptionsSnapshot<ChatGPTSettings> chatGPTSettings)
+
+        private readonly ChatGPTSettings _openAiSettings;
+        public ChatGPTTool(IOptionsSnapshot<ChatGPTSettings> chatGPTSettings)
         {
-            _memoryCache = memoryCache;
-            _chatGPTSettings = chatGPTSettings.Value;
+            _openAiSettings = chatGPTSettings.Value;
         }
 
-        public async Task<ResultDto> GetGPTMessageAsync(RequestDto requestDto)
+        public async Task<string> GetGPTMessageAsync(string message, List<MessageList> messageLists)
         {
-            var key = _chatGPTSettings.Key;
-            var orginId = _chatGPTSettings.OrginId;
-            var maxTokens = _chatGPTSettings.MaxTokens;
-            var cacheSecound = _chatGPTSettings.CacheSecound;
+            var key = _openAiSettings.Key;
+            var orginId = _openAiSettings.OrginId;
+            var messageCount = _openAiSettings.MessageCount;
 
-            var res = new ResultDto();
+            var api = new OpenAIAPI(new APIAuthentication(key, orginId));
 
-            var conversationKey = requestDto.ReceivedName + requestDto.GroupName + requestDto.GroupRemark;
-            var cacheKey = $"conversation_{conversationKey}";
+            var chat = api.Chat.CreateConversation();
 
-            var chatRequest = new ChatRequest
+            //因为This model's maximum context length is 4097 tokens.
+            //所以只保留第一次对话和最后四次对话
+            var newMessageLists = new List<MessageList>();
+            newMessageLists.AddRange(messageLists.Skip(0).Take(2));
+            newMessageLists.AddRange(messageLists.Skip(Math.Max(0, messageLists.Count - messageCount * 2)).Take(messageCount * 2));
+
+            foreach (var item in newMessageLists)
             {
-                MaxTokens = Convert.ToInt32(maxTokens)
-            };
-
-            OpenAIAPI api = new OpenAIAPI(new APIAuthentication(key, orginId));
-            {
-                Conversation chat;
-
-                if (_memoryCache.TryGetValue(cacheKey, out Conversation conversation))
+                chat.AppendMessage(new ChatMessage
                 {
-                    chat = conversation;
-                }
-                else
-                {
-                    chat = api.Chat.CreateConversation(chatRequest);
-                    _memoryCache.Set(cacheKey, chat, TimeSpan.FromSeconds(cacheSecound));
-                }
-
-                chat.AppendUserInput(requestDto.Spoken);
-
-
-                int retries = 3;
-                //重试时间0.5s
-                int delayInMilliseconds = 500;
-
-                while (retries > 0)
-                {
-                    try
-                    {
-                        res = new ResultDto();
-                        res.Data.Info.Text = await chat.GetResponseFromChatbotAsync();
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        retries--;
-                        res.Code = 500;
-                        res.Message = ex.Message;
-                        await Task.Delay(delayInMilliseconds);
-                    }
-                }
+                    Content = item.Message,
+                    Role = ChatMessageRole.FromString(item.MessageType),
+                });
             }
+            chat.AppendMessage(new ChatMessage
+            {
+                Content = message,
+                Role = ChatMessageRole.User,
+            });
 
-            return res;
+            return await chat.GetResponseFromChatbotAsync();
         }
 
     }

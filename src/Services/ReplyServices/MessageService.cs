@@ -11,6 +11,9 @@ using System.Net.Http.Headers;
 using Utility.Helper;
 using Utility.Models;
 using Microsoft.Extensions.Options;
+using OpenAI_API.Chat;
+using System;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Services.ReplyServices
 {
@@ -20,13 +23,15 @@ namespace Services.ReplyServices
         private readonly ILogger<MessageService> _logger;
         private readonly ChatGPTTool _chatGPTTool;
         private readonly ChatGPTSettings _chatGPTSettings;
+        private readonly IMemoryCache _memoryCache;
 
-        public MessageService(SqlDbContext context, ILogger<MessageService> logger, ChatGPTTool chatGPTTool, IOptionsSnapshot<ChatGPTSettings> chatGPTSettings)
+        public MessageService(SqlDbContext context, ILogger<MessageService> logger, ChatGPTTool chatGPTTool, IOptionsSnapshot<ChatGPTSettings> chatGPTSettings, IMemoryCache memoryCache)
         {
             _context = context;
             _logger = logger;
             _chatGPTTool = chatGPTTool;
             _chatGPTSettings = chatGPTSettings.Value;
+            _memoryCache = memoryCache;
         }
 
         public async Task<ResultDto> SendMessageAsync(RequestDto requestDto)
@@ -98,30 +103,34 @@ namespace Services.ReplyServices
                 return new ResultDto();
             }
 
+            var messageLists = new List<MessageList>();
 
-            var gptMessage = await _chatGPTTool.GetGPTMessageAsync(requestDto);
-
-            if (gptMessage.Code == 0)
+            var cacheKey = $"{requestDto.ReceivedName}_{requestDto.GroupName}_{requestDto.GroupRemark}";
+            if (_memoryCache.TryGetValue(cacheKey, out List<MessageList> newMessageLists))
             {
-                workToolCountmodel.Count--;
-
-                res.Data.Info.Text = $"\n{gptMessage.Data.Info.Text}";
-
-                AddLog(operationID, LogType.Bot, requestDto, res.Data.Info.Text);
-
-                await _context.SaveChangesAsync();
-                await SendRawMessage(requestDto, res);
-                return new ResultDto();
+                messageLists = newMessageLists;
             }
-            else
-            {
-                AddLog(operationID, LogType.System, requestDto, gptMessage.Message);
 
-                await _context.SaveChangesAsync();
-                return new ResultDto();
-            }
+            var gptMessage = await _chatGPTTool.GetGPTMessageAsync(requestDto.Spoken, messageLists);
+
+            //添加缓存
+            messageLists.Add(new MessageList() { MessageType = ChatMessageRole.User, Message = requestDto.Spoken });
+            messageLists.Add(new MessageList() { MessageType = ChatMessageRole.Assistant, Message = gptMessage });
+            _memoryCache.Set(cacheKey, messageLists, TimeSpan.FromSeconds(_chatGPTSettings.CacheSecound));
+
+            workToolCountmodel.Count--;
+
+            res.Data.Info.Text = $"\n{gptMessage}";
+
+            AddLog(operationID, LogType.Bot, requestDto, gptMessage);
+
+            await _context.SaveChangesAsync();
+            await SendRawMessage(requestDto, res);
+            return new ResultDto();
 
         }
+
+
         private void AddLog(Guid operationID, LogType LogType, RequestDto requestDto, string message)
         {
             var workToolLog = new WorkToolLog

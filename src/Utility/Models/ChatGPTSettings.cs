@@ -36,6 +36,10 @@
         /// 机器人次数id
         /// </summary>
         public int CountId { get; set; }
+        /// <summary>
+        /// 上下文保存对话数
+        /// </summary>
+        public int MessageCount { get; set; }
 
     }
 }
